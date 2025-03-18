@@ -1,125 +1,123 @@
 package com.phasmidsoftware.dsaipg.sort.par;
 
-import java.io.BufferedWriter;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
 
 /**
- * This code has been fleshed out by Ziyao Qiao. Thanks very much.
- * CONSIDER tidy it up a bit.
+ * Parallel Sorting Experiment Main Entry
+ * This program runs 3 experiments:
+ * 1. Only change cutoff value
+ * 2. Only change recursion depth (max depth)
+ * 3. Change both cutoff and recursion depth
+ * and saves each result to its own CSV file.
  */
 public class Main {
 
-    /**
-     * The main method serves as the entry point for the program. It processes command-line arguments,
-     * configures sorting parameters, performs parallel sorting on a random array, measures execution time,
-     * and writes the performance results to a CSV file.
-     *
-     * @param args command-line arguments used for configuring program execution.
-     */
     public static void main(String[] args) {
-        processArgs(args);
         System.out.println("Degree of parallelism: " + ForkJoinPool.getCommonPoolParallelism());
+
+        runCutoffOnlyExperiment();
+        runDepthOnlyExperiment();
+        runCombinedExperiment();
+
+    }
+
+    /**
+     * Experiment 1: only vary cutoff, fix recursion depth to a reasonable value
+     */
+    private static void runCutoffOnlyExperiment() {
+        System.out.println("\n EXP1: only change cutoff (fixed maxDepth)");
+        int fixedDepth = (int) (Math.log(ForkJoinPool.getCommonPoolParallelism()) / Math.log(2));
+        int[] array = new int[2_000_000];
         Random random = new Random();
-        int[] array = new int[2000000];
-        Collection<Long> timeList = new ArrayList<>();
-        for (int j = 50; j < 100; j++) {
-            ParSort.cutoff = 10000 * (j + 1);
-            // for (int i = 0; i < array.length; i++) array[i] = random.nextInt(10000000);
-            long time;
-            long startTime = System.currentTimeMillis();
+        List<Long> timeList = new ArrayList<>();
+
+        int[] cutoffValues = {
+            20000, 30000, 40000, 50000, 60000,
+            80000, 100000, 120000, 150000, 180000, 200000
+        };
+
+        for (int cutoff : cutoffValues) {
+            ParSort.cutoff = cutoff;
+            ParSort.setMaxDepth(fixedDepth);
+
+            long total = 0;
             for (int t = 0; t < 10; t++) {
-                for (int i = 0; i < array.length; i++) array[i] = random.nextInt(10000000);
+                for (int i = 0; i < array.length; i++)
+                    array[i] = random.nextInt(10_000_000);
+                long start = System.currentTimeMillis();
                 ParSort.sort(array, 0, array.length);
+                total += System.currentTimeMillis() - start;
             }
-            long endTime = System.currentTimeMillis();
-            time = (endTime - startTime);
-            timeList.add(time);
 
-
-            System.out.println("cutoff：" + (ParSort.cutoff) + "\t\t10times Time:" + time + "ms");
-
+            System.out.printf("cutoff = %-7d, avgTime = %.2f ms%n", cutoff, total / 10.0);
+            timeList.add(total / 10);
         }
-        try {
-            FileOutputStream fis = new FileOutputStream("./src/result.csv");
-            OutputStreamWriter isr = new OutputStreamWriter(fis);
-            BufferedWriter bw = new BufferedWriter(isr);
-            int j = 0;
-            for (long i : timeList) {
-                String content = (double) 10000 * (j + 1) / 2000000 + "," + (double) i / 10 + "\n";
-                j++;
-                bw.write(content);
-                bw.flush();
+
+    }
+
+    /**
+     * Experiment 2: only vary recursion depth, fix cutoff to a reasonable value
+     */
+    private static void runDepthOnlyExperiment() {
+        System.out.println("\n EXP2: only change maxDepth (fixed cutoff)");
+        int fixedCutoff = 100000;  
+        int[] array = new int[2_000_000];
+        Random random = new Random();
+        List<Long> timeList = new ArrayList<>();
+
+        int sysDepth = (int) (Math.log(ForkJoinPool.getCommonPoolParallelism()) / Math.log(2));
+
+        for (int depth = 1; depth <= sysDepth + 2; depth++) {
+            ParSort.cutoff = fixedCutoff;
+            ParSort.setMaxDepth(depth);
+
+            long total = 0;
+            for (int t = 0; t < 10; t++) {
+                for (int i = 0; i < array.length; i++)
+                    array[i] = random.nextInt(10_000_000);
+                long start = System.currentTimeMillis();
+                ParSort.sort(array, 0, array.length);
+                total += System.currentTimeMillis() - start;
             }
-            bw.close();
 
-        } catch (IOException e) {
-            e.printStackTrace();
+            System.out.printf("maxDepth = %-2d, avgTime = %.2f ms%n", depth, total / 10.0);
+            timeList.add(total / 10);
+        }
+
+    }
+
+    /**
+     * Experiment 3: vary both cutoff and maxDepth (combined strategy)
+     */
+    private static void runCombinedExperiment() {
+        System.out.println("\n EXP3: combined (cutoff and maxDepth)");
+        int[] array = new int[2_000_000];
+        Random random = new Random();
+
+        int[] cutoffValues = {
+            20000, 30000, 40000, 50000, 60000,
+            80000, 100000, 120000, 150000, 180000, 200000
+        };
+
+        for (int cutoff : cutoffValues) {
+            for (int depth = 2; depth <= 6; depth++) {
+                ParSort.cutoff = cutoff;
+                ParSort.setMaxDepth(depth);
+
+                long total = 0;
+                for (int t = 0; t < 10; t++) {
+                    for (int i = 0; i < array.length; i++)
+                        array[i] = random.nextInt(10_000_000);
+                    long start = System.currentTimeMillis();
+                    ParSort.sort(array, 0, array.length);
+                    total += System.currentTimeMillis() - start;
+                }
+
+                double avg = total / 10.0;
+                System.out.printf("cutoff = %-7d | depth = %-2d | avgTime = %.2f ms%n", cutoff, depth, avg);
+            }
         }
     }
-
-    /**
-     * Processes the command-line arguments by iterating through the provided array of arguments.
-     * Each argument is checked for specific prefixes (e.g., "-" symbols), and arguments with such prefixes
-     * are further handled using {@link #processArg(String[])}. The method continuously modifies the arguments array
-     * by removing processed elements.
-     *
-     * @param args an array of strings representing command-line arguments to be processed.
-     *             Each argument can include options, flags, or parameters that configure the program's behavior.
-     */
-    private static void processArgs(String[] args) {
-        String[] xs = args;
-        while (xs.length > 0)
-            if (xs[0].startsWith("-")) xs = processArg(xs);
-    }
-
-    /**
-     * Processes a given array of strings, extracting a subset of elements and applying a command
-     * processing operation on the first two elements of the input array.
-     *
-     * @param xs the input array of strings where the first two elements are used for command processing
-     *           and the remaining elements are returned as the result.
-     * @return an array of strings containing the elements of the input array excluding the first two.
-     */
-    private static String[] processArg(String[] xs) {
-        String[] result = new String[0];
-        System.arraycopy(xs, 2, result, 0, xs.length - 2);
-        processCommand(xs[0], xs[1]);
-        return result;
-    }
-
-    /**
-     * Processes a command and performs an associated action based on the given inputs.
-     *
-     * @param x the command identifier, which specifies the operation to perform.
-     *          Supported values: "N" for setting configuration and "P" for retrieving
-     *          the common pool parallelism level.
-     * @param y the value associated with the command. For "N", this represents the
-     *          configuration value to be set.
-     */
-    private static void processCommand(String x, String y) {
-        if (x.equalsIgnoreCase("N")) setConfig(x, Integer.parseInt(y));
-        else
-            // TODO sort this out
-            if (x.equalsIgnoreCase("P")) //noinspection ResultOfMethodCallIgnored
-                ForkJoinPool.getCommonPoolParallelism();
-    }
-
-    /**
-     * Configures a key-value pair in the application's configuration.
-     * This method stores the specified key and associated integer value
-     * into the configuration map.
-     *
-     * @param x the key to be stored in the configuration
-     * @param i the integer value to be associated with the specified key
-     */
-    private static void setConfig(String x, int i) {
-        configuration.put(x, i);
-    }
-
-    @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
-    private static final Map<String, Integer> configuration = new HashMap<>();
 }
