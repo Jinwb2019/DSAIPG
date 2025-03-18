@@ -23,6 +23,13 @@ final class ParSort {
      */
     public static int cutoff = 1000;
 
+    public static int maxDepth = 100;
+
+    private static final ThreadLocal<Integer> currentDepth = ThreadLocal.withInitial(() -> 0);
+
+    public static void setMaxDepth(int depth) {
+        maxDepth = depth;
+    }
     /**
      * Sorts the specified portion of the input array using a parallel sorting algorithm.
      * If the range to be sorted is smaller than a predefined cutoff value, the method
@@ -36,11 +43,14 @@ final class ParSort {
      */
     public static void sort(int[] array, int from, int to) {
         if (to - from >= cutoff) {
-            CompletableFuture<int[]> completableFuture1 = null;
-            CompletableFuture<int[]> completableFuture2 = null;
-            // TO BE IMPLEMENTED 
-            // END SOLUTION
-            CompletableFuture<int[]> completableFuture = completableFuture1.thenCombine(completableFuture2, ParSort::doMerge);
+            int mid = from + (to - from) / 2;
+
+            CompletableFuture<int[]> completableFuture1 = asyncSort(array, from, mid);
+            CompletableFuture<int[]> completableFuture2 = asyncSort(array, mid, to);
+
+            CompletableFuture<int[]> completableFuture = completableFuture1
+                    .thenCombine(completableFuture2, ParSort::doMerge);
+
             completableFuture.whenComplete((result, throwable) -> System.arraycopy(result, 0, array, from, result.length));
             completableFuture.join();
         } else
@@ -58,10 +68,25 @@ final class ParSort {
      * @return a new sorted array containing the elements from the specified range of the input array
      */
     static int[] sortRecursive(int[] array, int from, int to) {
-        int[] result = new int[to - from];
-        // TO BE IMPLEMENTED 
-         // NOTE you need to do something here so that result is the sorted version of array.
-        // END SOLUTION
+        int length = to - from;
+        int[] result = new int[length];
+
+        int depth = currentDepth.get();
+
+        if (length < cutoff || depth >= maxDepth) {
+            System.arraycopy(array, from, result, 0, length);
+            Arrays.sort(result);
+        } else {
+            int mid = from + (to - from) / 2;
+
+            currentDepth.set(depth + 1);
+
+            int[] left = sortRecursive(array, from, mid);
+            int[] right = sortRecursive(array, mid, to);
+            result = doMerge(left, right);
+
+            currentDepth.set(depth);
+        }
         return result;
     }
 
